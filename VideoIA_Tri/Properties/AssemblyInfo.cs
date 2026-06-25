@@ -8,11 +8,11 @@ using System.Windows;
 // l'ensemble d'attributs suivant. Pour modifier les informations
 // associées à un assembly.
 [assembly: AssemblyTitle("VideoIA_Tri")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyDescription("logiciel d'analyse video")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("VideoIA_Tri")]
-[assembly: AssemblyCopyright("Copyright ©  2026")]
+[assembly: AssemblyCopyright("Copyright ©Elliott Magnier  2026")]
 [assembly: AssemblyTrademark("VIDEO_AI")]
 [assembly: AssemblyCulture("")]
 
