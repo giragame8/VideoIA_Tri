@@ -1,0 +1,38 @@
+﻿<Window x:Class="VideoIA_Tri.FenetrePreuve"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Détails de l'événement" Height="850" Width="1000"
+        WindowStartupLocation="CenterScreen" Background="#1E1E1E">
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="300"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <GroupBox Header="Capture IA (Preuve)" Foreground="White" Grid.Row="0" Margin="0,0,0,10">
+            <Image Name="ImageAgrandie" Stretch="Uniform"/>
+        </GroupBox>
+
+        <TextBlock Name="TxtTitre" Grid.Row="1" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+
+        <GroupBox Header="Action Vidéo (-3s)" Foreground="White" Grid.Row="2" Margin="0,0,0,10">
+            <Grid Background="Black">
+                <MediaElement Name="LecteurVideo" LoadedBehavior="Manual" UnloadedBehavior="Stop" Stretch="Uniform"/>
+
+                <Border VerticalAlignment="Bottom" Background="#AA000000" Padding="10">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button Content="⏯ Play/Pause" Click="BtnPlay_Click" Width="100" Margin="5"/>
+                        <Button Content="🔄 Rejouer l'action" Click="BtnReplay_Click" Width="120" Margin="5"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </GroupBox>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="💾 Sauvegarder Image" Click="BtnSauvegarder_Click" Width="180" Height="35" Background="#FF007ACC" Foreground="White" Margin="0,0,10,0"/>
+            <Button Content="Fermer" Click="BtnFermer_Click" Width="100" Height="35" Background="#444" Foreground="White"/>
+        </StackPanel>
+    </Grid>
+</Window>

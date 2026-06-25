@@ -1,0 +1,94 @@
+﻿<Window x:Class="VideoIA_Tri.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Scanner Vidéo IA Pro - V1.2.3" Height="650" Width="1100"
+        FontFamily="Segoe UI" Background="White">
+
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#68217A"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="10,5"/>
+        </Style>
+    </Window.Resources>
+
+    <Border BorderBrush="#68217A" BorderThickness="4">
+        <Grid Margin="15">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="0,0,0,10">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                    <Button Name="BtnChoisirDossier" Content="📁 Choisir Dossier" Width="160" Height="40" Click="BtnChoisirDossier_Click"/>
+                    <Button Name="BtnAnalyser" Content="▶ Lancer l'Analyse" Width="160" Height="40" Margin="10,0" Click="BtnAnalyser_Click" IsEnabled="False"/>
+                    <TextBlock Name="TxtStatut" Text="Prêt" VerticalAlignment="Center" FontWeight="Bold" FontSize="16" Foreground="#333"/>
+                </StackPanel>
+                <Button Content="?" Width="40" Height="40" HorizontalAlignment="Right" Click="BtnApropos_Click" Background="#FF007ACC" FontSize="20"/>
+            </Grid>
+
+            <Border Grid.Row="1" Margin="0,0,0,10" Background="#F0F0F0" Padding="10">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Filtrer par objet :" VerticalAlignment="Center" Margin="0,0,10,0" FontWeight="Bold"/>
+                    <ComboBox Name="CboFiltreType" Width="120" SelectionChanged="Filtre_Changed">
+                        <ComboBoxItem Content="Tous" IsSelected="True"/>
+                        <ComboBoxItem Content="Personne"/>
+                        <ComboBoxItem Content="Voiture"/>
+                    </ComboBox>
+
+                    <TextBlock Text="Rechercher fichier :" VerticalAlignment="Center" Margin="20,0,10,0" FontWeight="Bold"/>
+                    <TextBox Name="TxtRecherche" Width="200" VerticalContentAlignment="Center" TextChanged="Filtre_Changed"/>
+
+                    <TextBlock Text="(Le tableau se met à jour en direct)" Foreground="Gray" VerticalAlignment="Center" Margin="15,0,0,0" FontStyle="Italic"/>
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="2" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="4*"/>
+                    <ColumnDefinition Width="6*"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" BorderBrush="#333" BorderThickness="2" Background="Black" Margin="0,0,15,0">
+                    <Image Name="EcranLive" Stretch="Uniform"/>
+                </Border>
+
+                <DataGrid Name="GridEvenements" Grid.Column="1" AutoGenerateColumns="False" IsReadOnly="True" AlternatingRowBackground="#F9F9F9" RowHeight="80">
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="Preuve">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Image Source="{Binding ImagePreuve}" Height="70" Margin="5" Stretch="Uniform" Cursor="Hand" PreviewMouseLeftButtonUp="ImagePreuve_Click" ToolTip="Cliquer pour voir / lire la vidéo"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Événement" Binding="{Binding TypeEvenement}" FontWeight="Bold" Width="*"/>
+                        <DataGridTextColumn Header="Heure" Binding="{Binding HeureIncrustee}" Width="Auto"/>
+                        <DataGridTextColumn Header="Chrono" Binding="{Binding RepereTempsLecteur}" Width="Auto"/>
+                        <DataGridTextColumn Header="Fichier" Binding="{Binding FichierSource}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+
+            <Grid Grid.Row="3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Grid Grid.Column="0" Margin="0,0,15,0">
+                    <ProgressBar Name="BarreProgression" Height="40" Minimum="0" Maximum="100" Value="0" Foreground="#68217A" Background="#EEEEEE" BorderThickness="0"/>
+                    <TextBlock Name="TxtPourcentage" Text="0%" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="White" FontSize="16"/>
+                </Grid>
+
+                <Button Name="BtnExporter" Grid.Column="1" Content="📊 Exporter Excel" Width="180" Height="40" Click="BtnExporter_Click"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

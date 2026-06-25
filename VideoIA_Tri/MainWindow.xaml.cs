@@ -1,0 +1,268 @@
+﻿using System;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Data;
+using System.ComponentModel;
+using System.Windows.Controls;
+using System.Text;
+using OpenCvSharp;
+using OpenCvSharp.Dnn;
+using CsvHelper;
+using CsvHelper.Configuration;
+using CsvHelper.Configuration.Attributes;
+using System.Globalization;
+using System.Text.RegularExpressions;
+using System.Drawing;
+using Tesseract;
+using Microsoft.WindowsAPICodePack.Dialogs;
+
+namespace VideoIA_Tri
+{
+    public class EvenementVideo
+    {
+        [Ignore] public System.Windows.Media.ImageSource ImagePreuve { get; set; }
+        public string FichierSource { get; set; }
+        public string TypeEvenement { get; set; }
+        public string HeureIncrustee { get; set; }
+        public string RepereTempsLecteur { get; set; }
+
+        [Ignore] public string CheminComplet { get; set; }
+        [Ignore] public double Millisecondes { get; set; }
+    }
+
+    public partial class MainWindow : System.Windows.Window
+    {
+        public ObservableCollection<EvenementVideo> ListeEvenements { get; set; }
+        private ICollectionView VueFiltree;
+        private string dossierSelectionne = "";
+
+        public MainWindow()
+        {
+            InitializeComponent();
+            ListeEvenements = new ObservableCollection<EvenementVideo>();
+
+            VueFiltree = CollectionViewSource.GetDefaultView(ListeEvenements);
+            VueFiltree.Filter = FiltrerResultats;
+            GridEvenements.ItemsSource = VueFiltree;
+        }
+
+        private bool FiltrerResultats(object obj)
+        {
+            var ev = obj as EvenementVideo;
+            if (ev == null) return false;
+
+            string recherche = TxtRecherche.Text.ToLower();
+            string typeFiltre = (CboFiltreType.SelectedItem as ComboBoxItem)?.Content.ToString();
+
+            bool matchTexte = string.IsNullOrEmpty(recherche) || ev.FichierSource.ToLower().Contains(recherche);
+            bool matchType = typeFiltre == "Tous" || ev.TypeEvenement.Contains(typeFiltre);
+
+            return matchTexte && matchType;
+        }
+
+        // --- CORRECTION DU BUG ICI ---
+        private void Filtre_Changed(object sender, EventArgs e)
+        {
+            // On vérifie que le filtre existe bien avant d'essayer de le mettre à jour !
+            if (VueFiltree != null)
+            {
+                VueFiltree.Refresh();
+            }
+        }
+
+        private void BtnChoisirDossier_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new CommonOpenFileDialog { IsFolderPicker = true };
+            if (dialog.ShowDialog() == CommonFileDialogResult.Ok)
+            {
+                dossierSelectionne = dialog.FileName;
+                TxtStatut.Text = $"Dossier : {Path.GetFileName(dossierSelectionne)}";
+                BtnAnalyser.IsEnabled = true;
+            }
+        }
+
+        private async void BtnAnalyser_Click(object sender, RoutedEventArgs e)
+        {
+            BtnAnalyser.IsEnabled = false;
+            ListeEvenements.Clear();
+            BarreProgression.Value = 0;
+            TxtPourcentage.Text = "0%";
+
+            var fichiers = Directory.GetFiles(dossierSelectionne)
+                .Where(f => new[] {".mp4", ".ts", ".avi", ".mkv",
+".mov", ".mpeg", ".mpg", ".m4v",
+".webm", ".flv", ".f4v",
+".3gp", ".mjpg", ".mjpeg",
+".trp", ".rec", ".vob",
+".rmvb", ".av1", ".m4s",
+".iva"
+ }.Contains(Path.GetExtension(f).ToLower()))
+                .ToArray();
+
+            if (fichiers.Length == 0) return;
+
+            TxtStatut.Text = "Analyse en cours...";
+            await Task.Run(() => AnalyserVideos(fichiers));
+
+            TxtStatut.Text = "Analyse terminée !";
+            BarreProgression.Value = 100;
+            TxtPourcentage.Text = "100%";
+            BtnAnalyser.IsEnabled = true;
+        }
+
+        private void AnalyserVideos(string[] fichiers)
+        {
+            string cheminTessData = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tessdata");
+            string cheminYolo = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yolov8s.onnx");
+
+            using (var moteurOCR = new TesseractEngine(cheminTessData, "eng", EngineMode.Default))
+            using (var yoloNet = CvDnn.ReadNetFromOnnx(cheminYolo))
+            {
+                foreach (var fichier in fichiers)
+                {
+                    using (var video = new VideoCapture(fichier))
+                    {
+                        Mat frame = new Mat();
+                        double fps = video.Fps;
+                        int totalImages = (int)video.Get(VideoCaptureProperties.FrameCount);
+                        int frameIndex = 0;
+                        int intervalle = Math.Max(1, (int)Math.Round(fps));
+
+                        while (video.Read(frame) && !frame.Empty())
+                        {
+                            if (frameIndex % 15 == 0 && totalImages > 0)
+                            {
+                                int p = (int)(((double)frameIndex / totalImages) * 100);
+                                Application.Current.Dispatcher.Invoke(() => {
+                                    BarreProgression.Value = p;
+                                    TxtPourcentage.Text = $"{p}%";
+                                });
+                            }
+
+                            if (frameIndex % intervalle == 0)
+                            {
+                                string objet = DetecterObjetEtDessiner(frame, yoloNet);
+                                if (objet != "Rien")
+                                {
+                                    string heure = LireHeureSurImage(frame, moteurOCR);
+                                    var img = ConvertirMatPourWpf(frame);
+                                    double ms = video.Get(VideoCaptureProperties.PosMsec);
+
+                                    Application.Current.Dispatcher.Invoke(() => {
+                                        EcranLive.Source = img;
+                                        ListeEvenements.Add(new EvenementVideo
+                                        {
+                                            ImagePreuve = img,
+                                            FichierSource = Path.GetFileName(fichier),
+                                            CheminComplet = fichier,
+                                            TypeEvenement = objet,
+                                            HeureIncrustee = heure,
+                                            Millisecondes = ms,
+                                            RepereTempsLecteur = TimeSpan.FromMilliseconds(ms).ToString(@"hh\:mm\:ss")
+                                        });
+                                    });
+                                }
+                            }
+                            frameIndex++;
+                        }
+                    }
+                }
+            }
+        }
+
+        private string DetecterObjetEtDessiner(Mat frame, Net net)
+        {
+            using (Mat blob = CvDnn.BlobFromImage(frame, 1.0 / 255.0, new OpenCvSharp.Size(640, 640), new Scalar(0, 0, 0), true, false))
+            {
+                net.SetInput(blob);
+                using (Mat output = net.Forward())
+                {
+                    int colonnes = 8400;
+                    float[] donnees = new float[84 * colonnes];
+                    System.Runtime.InteropServices.Marshal.Copy(output.Data, donnees, 0, donnees.Length);
+                    float maxC = 0; int bestIdx = -1; int bestClass = -1;
+                    for (int i = 0; i < colonnes; i++)
+                    {
+                        float p = donnees[4 * colonnes + i]; float v = donnees[6 * colonnes + i];
+                        if (p > 0.60f && p > maxC) { maxC = p; bestIdx = i; bestClass = 0; }
+                        if (v > 0.60f && v > maxC) { maxC = v; bestIdx = i; bestClass = 2; }
+                    }
+                    if (bestIdx != -1)
+                    {
+                        float xc = donnees[0 * colonnes + bestIdx], yc = donnees[1 * colonnes + bestIdx];
+                        float w = donnees[2 * colonnes + bestIdx], h = donnees[3 * colonnes + bestIdx];
+                        float sx = (float)frame.Width / 640f, sy = (float)frame.Height / 640f;
+                        int x = (int)((xc - w / 2) * sx), y = (int)((yc - h / 2) * sy);
+
+                        x = Math.Max(0, x);
+                        y = Math.Max(0, y);
+                        int width = Math.Min(frame.Width - x, (int)(w * sx));
+                        int height = Math.Min(frame.Height - y, (int)(h * sy));
+
+                        Cv2.Rectangle(frame, new OpenCvSharp.Rect(x, y, width, height), Scalar.LimeGreen, 3);
+                        return bestClass == 0 ? "Personne" : "Voiture";
+                    }
+                }
+            }
+            return "Rien";
+        }
+
+        private System.Windows.Media.Imaging.BitmapImage ConvertirMatPourWpf(Mat mat)
+        {
+            Cv2.ImEncode(".jpg", mat, out byte[] data);
+            var img = new System.Windows.Media.Imaging.BitmapImage();
+            using (var ms = new MemoryStream(data))
+            {
+                img.BeginInit(); img.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                img.StreamSource = ms; img.EndInit(); img.Freeze();
+            }
+            return img;
+        }
+
+        private string LireHeureSurImage(Mat frame, TesseractEngine engine)
+        {
+            try
+            {
+                using (Mat cut = new Mat(frame, new OpenCvSharp.Rect(frame.Width / 2, 0, frame.Width / 2, (int)(frame.Height * 0.15))))
+                using (Mat gray = new Mat())
+                {
+                    Cv2.CvtColor(cut, gray, ColorConversionCodes.BGR2GRAY);
+                    Cv2.Resize(gray, gray, new OpenCvSharp.Size(0, 0), 2.5, 2.5, InterpolationFlags.Cubic); // Ajout d'un petit zoom pour l'OCR
+                    Cv2.ImEncode(".bmp", gray, out byte[] b);
+                    using (var ms = new MemoryStream(b))
+                    using (Bitmap bmp = new Bitmap(ms))
+                    using (var p = engine.Process(bmp, PageSegMode.Auto))
+                    {
+                        Match m = Regex.Match(p.GetText(), @"\d{2}:\d{2}:\d{2}");
+                        return m.Success ? m.Value : "--:--:--";
+                    }
+                }
+            }
+            catch { return "--:--:--"; }
+        }
+
+        private void BtnExporter_Click(object sender, RoutedEventArgs e)
+        {
+            if (ListeEvenements.Count == 0) return;
+            string path = Path.Combine(dossierSelectionne, "Rapport_V1.2.csv");
+            using (var sw = new StreamWriter(path, false, Encoding.UTF8))
+            using (var csv = new CsvWriter(sw, new CsvConfiguration(CultureInfo.InvariantCulture) { Delimiter = ";" }))
+            {
+                csv.WriteRecords(ListeEvenements);
+            }
+            MessageBox.Show("Export Excel OK : \n" + path, "Succès");
+        }
+
+        private void ImagePreuve_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            var img = sender as System.Windows.Controls.Image;
+            var ev = img?.DataContext as EvenementVideo;
+            if (ev != null) new FenetrePreuve(ev).ShowDialog();
+        }
+
+        private void BtnApropos_Click(object sender, RoutedEventArgs e) => new FenetreApropos().ShowDialog();
+    }
+}

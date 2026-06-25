@@ -1,0 +1,23 @@
+﻿<Window x:Class="VideoIA_Tri.FenetreEnregistrement"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Activation du Logiciel" Height="400" Width="400"
+        WindowStartupLocation="CenterScreen" Background="#F3F3F3" WindowStyle="None" ResizeMode="NoResize" BorderBrush="#68217A" BorderThickness="2">
+    <StackPanel Margin="20">
+        <TextBlock Text="Activation Sécurisée" FontSize="22" FontWeight="Bold" Foreground="#68217A" Margin="0,0,0,20" HorizontalAlignment="Center"/>
+
+        <TextBlock Text="Prénom :"/>
+        <TextBox Name="TxtPrenom" Margin="0,5,0,10" Height="25"/>
+
+        <TextBlock Text="Nom :"/>
+        <TextBox Name="TxtNom" Margin="0,5,0,10" Height="25"/>
+
+        <TextBlock Text="Votre Code Machine (À donner à l'admin) :" FontWeight="SemiBold" Foreground="#D32F2F"/>
+        <TextBox Name="TxtCodeMachine" Margin="0,5,0,10" Height="25" IsReadOnly="True" Background="#E8E8E8" FontWeight="Bold" TextAlignment="Center"/>
+
+        <TextBlock Text="Clé de Licence :" FontWeight="SemiBold"/>
+        <TextBox Name="TxtLicence" Margin="0,5,0,20" Height="25"/>
+
+        <Button Content="Valider et Activer" Height="40" Background="#68217A" Foreground="White" FontWeight="Bold" Click="BtnValider_Click" Cursor="Hand"/>
+    </StackPanel>
+</Window>
