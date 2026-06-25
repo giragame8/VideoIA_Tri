@@ -10,7 +10,7 @@ using System.Windows;
 [assembly: AssemblyTitle("VideoIA_Tri")]
 [assembly: AssemblyDescription("logiciel d'analyse video")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
+[assembly: AssemblyCompany("Video_AI")]
 [assembly: AssemblyProduct("VideoIA_Tri")]
 [assembly: AssemblyCopyright("Copyright ©Elliott Magnier  2026")]
 [assembly: AssemblyTrademark("VIDEO_AI")]
