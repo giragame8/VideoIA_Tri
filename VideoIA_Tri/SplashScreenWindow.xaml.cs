@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -15,11 +17,50 @@ namespace VideoIA_Tri
         public SplashScreenWindow()
         {
             InitializeComponent();
-            this.Loaded += SplashScreenWindow_Loaded;
+            // ContentRendered garantit que l'UI et les animations sont affichées avant de lancer le code
+            this.ContentRendered += SplashScreenWindow_ContentRendered;
         }
 
-        private async void SplashScreenWindow_Loaded(object sender, RoutedEventArgs e)
+        private async void SplashScreenWindow_ContentRendered(object sender, EventArgs e)
         {
+            await Task.Delay(500); // Laisse le temps à l'animation de commencer de façon fluide
+
+            // --- 1. VÉRIFICATION DE MISE À JOUR (VIA L'ASSEMBLY) ---
+            try
+            {
+                string updateData = await CloudManager.VerifierMiseAJour();
+                if (!string.IsNullOrEmpty(updateData) && updateData.Contains("|"))
+                {
+                    string[] parts = updateData.Split('|');
+                    string versionEnLigneStr = parts[0].Trim();
+                    string lienTelechargement = parts[1].Trim();
+
+                    Version versionActuelle = Assembly.GetExecutingAssembly().GetName().Version;
+
+                    // TryParse évite un crash si Google Sheets contient des espaces ou un format invalide
+                    if (Version.TryParse(versionEnLigneStr, out Version versionEnLigne))
+                    {
+                        if (versionEnLigne > versionActuelle)
+                        {
+                            MessageBoxResult rep = MessageBox.Show(
+                                $"Une nouvelle version est disponible !\n\nVersion actuelle : {versionActuelle}\nNouvelle version : {versionEnLigne}\n\nVoulez-vous la télécharger maintenant ?",
+                                "Mise à jour disponible",
+                                MessageBoxButton.YesNo,
+                                MessageBoxImage.Question);
+
+                            if (rep == MessageBoxResult.Yes)
+                            {
+                                OuvrirLienWeb(lienTelechargement);
+                                Application.Current.Shutdown();
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* Ignorer les erreurs réseau pour ne pas bloquer le démarrage du logiciel */ }
+
+            // --- 2. VÉRIFICATION DE LA LICENCE ---
             bool accesAutorise = false;
             DateTime dateExpiration = DateTime.MinValue;
             string cleUtilisee = "";
@@ -37,7 +78,6 @@ namespace VideoIA_Tri
                         string[] cP = dec.Split('|');
                         dateExpiration = DateTime.Parse(cP[3]);
 
-                        // On vérifie que la clé correspond au PC et qu'elle contient bien les bonnes infos (>= 4)
                         if (cP[0] == Environment.MachineName && DateTime.Now <= dateExpiration && cP.Length >= 4)
                         {
                             accesAutorise = true;
@@ -46,10 +86,8 @@ namespace VideoIA_Tri
                 }
                 catch { }
 
-                // --- VÉRIFICATION CLOUD (LA RÉVOCATION) ---
                 if (accesAutorise)
                 {
-                    // Demande silencieuse au serveur pour voir si la clé est sur la liste noire
                     bool estBannie = await CloudManager.EstCleRevoguee(cleUtilisee);
                     if (estBannie)
                     {
@@ -58,7 +96,6 @@ namespace VideoIA_Tri
                     }
                 }
 
-                // Si accès refusé (banni, expiré ou hacké) -> On détruit le fichier local
                 if (!accesAutorise)
                 {
                     File.Delete(cheminUser);
@@ -73,8 +110,7 @@ namespace VideoIA_Tri
                 }
             }
 
-            // On attend 2 secondes pour laisser l'animation de chargement s'afficher
-            await Task.Delay(2000);
+            await Task.Delay(1000); // Laisse l'animation se terminer naturellement
 
             if (accesAutorise)
             {
@@ -84,8 +120,28 @@ namespace VideoIA_Tri
             {
                 new FenetreEnregistrement().Show();
             }
-
             this.Close();
+        }
+
+        // --- MÉTHODE ULTRA-ROBUSTE POUR OUVRIR LE NAVIGATEUR ---
+        private void OuvrirLienWeb(string url)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch
+            {
+                try
+                {
+                    url = url.Replace("&", "^&");
+                    Process.Start(new ProcessStartInfo("cmd", $"/c start {url}") { CreateNoWindow = true });
+                }
+                catch
+                {
+                    MessageBox.Show("Impossible d'ouvrir le navigateur automatiquement.\nVoici le lien à copier :\n\n" + url, "Lien de mise à jour", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
         }
     }
 }
