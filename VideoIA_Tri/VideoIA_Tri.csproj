@@ -126,6 +126,9 @@
     <!-- etc… -->
   </ItemGroup>
   <ItemGroup>
+    <None Include="anpr_yolov5s.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="App.config" />
     <None Include="Properties\app.manifest" />
     <None Include="Properties\Settings.settings" />
