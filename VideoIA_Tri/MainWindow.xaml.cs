@@ -1,24 +1,25 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Data;
-using System.ComponentModel;
 using System.Windows.Controls;
-using System.Text;
-using OpenCvSharp;
-using OpenCvSharp.Dnn;
+using System.Windows.Data;
 using CsvHelper;
 using CsvHelper.Configuration;
-using System.Globalization;
-using System.Text.RegularExpressions;
-using System.Drawing; // pour Bitmap (Tesseract)
-using Tesseract;
-using Microsoft.WindowsAPICodePack.Dialogs;
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using Microsoft.Toolkit.Uwp.Notifications;
-
+using Microsoft.WindowsAPICodePack.Dialogs;
+using OpenCvSharp;
+using Tesseract;
 
 namespace VideoIA_Tri
 {
@@ -93,102 +94,132 @@ namespace VideoIA_Tri
 
             if (fichiers.Length == 0)
             {
-                MessageBox.Show("Aucune vidéo trouvée.");
+                MessageBox.Show("Aucune vidéo trouvée.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
                 BtnLancerAnalyse.IsEnabled = true;
                 return;
             }
 
-            TxtStatut.Text = "Analyse en cours...";
-            await Task.Run(() => AnalyserVideos(fichiers));
+            // Récupération du mode choisi dans l'interface
+            ModeAccurate modeSelectionne = ModeAccurate.Auto;
+            int idx = CboPuce.SelectedIndex;
+            if (idx == 1) modeSelectionne = ModeAccurate.NPU;
+            else if (idx == 2) modeSelectionne = ModeAccurate.GPU;
+            else if (idx == 3) modeSelectionne = ModeAccurate.CPU;
+
+            using (var options = DetecteurPuce.ObtenirOptionsExecution(modeSelectionne, out string descriptionMatériel))
+            {
+                TxtStatut.Text = $"Analyse en cours [{descriptionMatériel}]...";
+
+                await Task.Run(() => AnalyserVideosOptimise(fichiers, options));
+            }
 
             TxtStatut.Text = "Analyse terminée !";
             BarreProgression.Value = 100;
             TxtPourcentage.Text = "100%";
             BtnLancerAnalyse.IsEnabled = true;
-            NotifierFinAnalyse();
 
-
-            // Notification simple (sans package externe)
             NotifierFinAnalyse();
         }
 
-        private void AnalyserVideos(string[] fichiers)
+        private void AnalyserVideosOptimise(string[] fichiers, SessionOptions optionsOnnx)
         {
             string cheminTessData = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tessdata");
             string cheminYolo = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yolov8s.onnx");
 
-            using (var moteurOCR = new TesseractEngine(cheminTessData, "eng", EngineMode.Default))
-            using (var yoloNet = CvDnn.ReadNetFromOnnx(cheminYolo))
+            Parallel.ForEach(fichiers, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) }, fichier =>
             {
-                foreach (var fichier in fichiers)
+                using (var moteurOCR = new TesseractEngine(cheminTessData, "eng", EngineMode.Default))
+                using (var sessionYolo = new InferenceSession(cheminYolo, optionsOnnx))
+                using (var video = new VideoCapture(fichier))
                 {
-                    using (var video = new VideoCapture(fichier))
-                    {
-                        Mat frame = new Mat();
-                        double fps = video.Fps;
-                        int totalImages = (int)video.Get(VideoCaptureProperties.FrameCount);
-                        int frameIndex = 0;
-                        int intervalle = Math.Max(1, (int)Math.Round(fps));
+                    Mat frame = new Mat();
+                    double fps = video.Fps;
+                    int totalImages = (int)video.Get(VideoCaptureProperties.FrameCount);
+                    int frameIndex = 0;
+                    int intervalle = Math.Max(1, (int)Math.Round(fps));
+                    int dernierPourcentage = -1;
 
-                        while (video.Read(frame) && !frame.Empty())
+                    while (video.Read(frame) && !frame.Empty())
+                    {
+                        if (frameIndex % intervalle == 0)
                         {
-                            if (frameIndex % 15 == 0 && totalImages > 0)
+                            string objet = DetecterObjetONNX(frame, sessionYolo);
+                            if (objet != "Rien")
+                            {
+                                string heure = LireHeureSurImage(frame, moteurOCR);
+                                var img = ConvertirMatPourWpf(frame);
+                                double ms = video.Get(VideoCaptureProperties.PosMsec);
+
+                                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                {
+                                    EcranLive.Source = img;
+                                    ListeEvenements.Add(new EvenementVideo
+                                    {
+                                        ImagePreuve = img,
+                                        FichierSource = Path.GetFileName(fichier),
+                                        CheminComplet = fichier,
+                                        TypeEvenement = objet,
+                                        HeureIncrustee = heure,
+                                        Millisecondes = ms,
+                                        RepereTempsLecteur = TimeSpan.FromMilliseconds(ms).ToString(@"hh\:mm\:ss")
+                                    });
+                                }));
+                            }
+
+                            if (totalImages > 0)
                             {
                                 int p = (int)(((double)frameIndex / totalImages) * 100);
-                                Application.Current.Dispatcher.Invoke(() => {
-                                    BarreProgression.Value = p;
-                                    TxtPourcentage.Text = $"{p}%";
-                                });
-                            }
-
-                            if (frameIndex % intervalle == 0)
-                            {
-                                string objet = DetecterObjetEtDessiner(frame, yoloNet);
-                                if (objet != "Rien")
+                                if (p != dernierPourcentage)
                                 {
-                                    string heure = LireHeureSurImage(frame, moteurOCR);
-                                    var img = ConvertirMatPourWpf(frame);
-                                    double ms = video.Get(VideoCaptureProperties.PosMsec);
-
-                                    Application.Current.Dispatcher.Invoke(() => {
-                                        EcranLive.Source = img;
-                                        ListeEvenements.Add(new EvenementVideo
-                                        {
-                                            ImagePreuve = img,
-                                            FichierSource = Path.GetFileName(fichier),
-                                            CheminComplet = fichier,
-                                            TypeEvenement = objet,
-                                            HeureIncrustee = heure,
-                                            Millisecondes = ms,
-                                            RepereTempsLecteur = TimeSpan.FromMilliseconds(ms).ToString(@"hh\:mm\:ss")
-                                        });
-                                    });
+                                    dernierPourcentage = p;
+                                    Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                    {
+                                        BarreProgression.Value = p;
+                                        TxtPourcentage.Text = $"{p}%";
+                                    }));
                                 }
                             }
-                            frameIndex++;
                         }
+                        frameIndex++;
                     }
                 }
-            }
+            });
         }
 
-        private string DetecterObjetEtDessiner(Mat frame, Net net)
+        private string DetecterObjetONNX(Mat frame, InferenceSession session)
         {
-            using (Mat blob = CvDnn.BlobFromImage(frame, 1.0 / 255.0, new OpenCvSharp.Size(640, 640), new Scalar(0, 0, 0), true, false))
+            using (Mat resized = new Mat())
             {
-                net.SetInput(blob);
-                using (Mat output = net.Forward())
+                Cv2.Resize(frame, resized, new OpenCvSharp.Size(640, 640));
+
+                var inputTensor = new DenseTensor<float>(new[] { 1, 3, 640, 640 });
+                for (int y = 0; y < 640; y++)
                 {
+                    for (int x = 0; x < 640; x++)
+                    {
+                        Vec3b color = resized.At<Vec3b>(y, x);
+                        inputTensor[0, 0, y, x] = color.Item2 / 255.0f;
+                        inputTensor[0, 1, y, x] = color.Item1 / 255.0f;
+                        inputTensor[0, 2, y, x] = color.Item0 / 255.0f;
+                    }
+                }
+
+                var inputs = new List<NamedOnnxValue>
+                {
+                    NamedOnnxValue.CreateFromTensor("images", inputTensor)
+                };
+
+                using (var results = session.Run(inputs))
+                {
+                    var output = results.First().AsEnumerable<float>().ToArray();
                     int colonnes = 8400;
-                    float[] donnees = new float[84 * colonnes];
-                    System.Runtime.InteropServices.Marshal.Copy(output.Data, donnees, 0, donnees.Length);
 
                     float maxC = 0; int bestIdx = -1; int bestClass = -1;
 
                     for (int i = 0; i < colonnes; i++)
                     {
-                        float p = donnees[4 * colonnes + i];
-                        float v = donnees[6 * colonnes + i];
+                        float p = output[4 * colonnes + i];
+                        float v = output[6 * colonnes + i];
 
                         if (p > 0.60f && p > maxC) { maxC = p; bestIdx = i; bestClass = 0; }
                         if (v > 0.60f && v > maxC) { maxC = v; bestIdx = i; bestClass = 2; }
@@ -196,8 +227,8 @@ namespace VideoIA_Tri
 
                     if (bestIdx != -1)
                     {
-                        float xc = donnees[0 * colonnes + bestIdx], yc = donnees[1 * colonnes + bestIdx];
-                        float w = donnees[2 * colonnes + bestIdx], h = donnees[3 * colonnes + bestIdx];
+                        float xc = output[0 * colonnes + bestIdx], yc = output[1 * colonnes + bestIdx];
+                        float w = output[2 * colonnes + bestIdx], h = output[3 * colonnes + bestIdx];
 
                         float sx = (float)frame.Width / 640f;
                         float sy = (float)frame.Height / 640f;
@@ -217,6 +248,7 @@ namespace VideoIA_Tri
                     }
                 }
             }
+
             return "Rien";
         }
 
@@ -263,7 +295,7 @@ namespace VideoIA_Tri
         {
             if (ListeEvenements.Count == 0)
             {
-                MessageBox.Show("Aucun événement à exporter.");
+                MessageBox.Show("Aucun événement à exporter.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -275,7 +307,7 @@ namespace VideoIA_Tri
                 csv.WriteRecords(ListeEvenements);
             }
 
-            MessageBox.Show("Export Excel OK : \n" + path, "Succès");
+            MessageBox.Show("Export Excel OK : \n" + path, "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void BtnChangerTheme_Click(object sender, RoutedEventArgs e)
@@ -345,6 +377,3 @@ namespace VideoIA_Tri
         }
     }
 }
-
-
-
