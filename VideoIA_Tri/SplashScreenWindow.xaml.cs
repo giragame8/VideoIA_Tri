@@ -12,20 +12,22 @@ namespace VideoIA_Tri
     public partial class SplashScreenWindow : Window
     {
         private readonly string CLE_SECRETE = "ElliottVideoIAPro_SecureKey_2026";
-        private string cheminUser = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ScannerVideoIA", "user.txt");
+        private string cheminUser = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ScannerVideoIA", "user.txt");
 
         public SplashScreenWindow()
         {
             InitializeComponent();
-            // ContentRendered garantit que l'UI et les animations sont affichées avant de lancer le code
             this.ContentRendered += SplashScreenWindow_ContentRendered;
         }
 
         private async void SplashScreenWindow_ContentRendered(object sender, EventArgs e)
         {
-            await Task.Delay(500); // Laisse le temps à l'animation de commencer de façon fluide
+            _ = AnimerBarre();
+            await Task.Delay(500);
 
-            // --- 1. VÉRIFICATION DE MISE À JOUR (VIA L'ASSEMBLY) ---
+            // 1. Vérification de mise à jour
             try
             {
                 string updateData = await CloudManager.VerifierMiseAJour();
@@ -33,11 +35,10 @@ namespace VideoIA_Tri
                 {
                     string[] parts = updateData.Split('|');
                     string versionEnLigneStr = parts[0].Trim();
-                    string lienTelechargement = parts[1].Trim();
+                    string lienTelechargement = parts[1].Trim(); // ✅ CORRECTION : Trim()
 
                     Version versionActuelle = Assembly.GetExecutingAssembly().GetName().Version;
 
-                    // TryParse évite un crash si Google Sheets contient des espaces ou un format invalide
                     if (Version.TryParse(versionEnLigneStr, out Version versionEnLigne))
                     {
                         if (versionEnLigne > versionActuelle)
@@ -58,9 +59,9 @@ namespace VideoIA_Tri
                     }
                 }
             }
-            catch { /* Ignorer les erreurs réseau pour ne pas bloquer le démarrage du logiciel */ }
+            catch { }
 
-            // --- 2. VÉRIFICATION DE LA LICENCE ---
+            // 2. Vérification licence
             bool accesAutorise = false;
             DateTime dateExpiration = DateTime.MinValue;
             string cleUtilisee = "";
@@ -69,7 +70,8 @@ namespace VideoIA_Tri
             {
                 try
                 {
-                    string clair = Encoding.UTF8.GetString(Convert.FromBase64String(File.ReadAllText(cheminUser)));
+                    string clair = Encoding.UTF8.GetString(
+                        Convert.FromBase64String(File.ReadAllText(cheminUser)));
                     string[] p = clair.Split(';');
                     if (p.Length >= 5)
                     {
@@ -78,7 +80,7 @@ namespace VideoIA_Tri
                         string[] cP = dec.Split('|');
                         dateExpiration = DateTime.Parse(cP[3]);
 
-                        if (cP[0] == Environment.MachineName && DateTime.Now <= dateExpiration && cP.Length >= 4)
+                        if (cP[0] == Environment.MachineName && DateTime.Now <= dateExpiration)
                         {
                             accesAutorise = true;
                         }
@@ -92,7 +94,8 @@ namespace VideoIA_Tri
                     if (estBannie)
                     {
                         accesAutorise = false;
-                        MessageBox.Show("Cette licence a été révoquée par l'administrateur. Le logiciel va se verrouiller.", "Accès Suspendu", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBox.Show("Cette licence a été révoquée.", "Accès Suspendu",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 }
 
@@ -105,25 +108,32 @@ namespace VideoIA_Tri
                     int joursRestants = (int)(dateExpiration - DateTime.Now).TotalDays;
                     if (joursRestants <= 30 && joursRestants > 0)
                     {
-                        MessageBox.Show($"Attention : Votre licence expire dans {joursRestants} jours.", "Alerte", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        MessageBox.Show(
+                            $"Attention : Votre licence expire dans {joursRestants} jours.",
+                            "Alerte", MessageBoxButton.OK, MessageBoxImage.Warning);
                     }
                 }
             }
 
-            await Task.Delay(1000); // Laisse l'animation se terminer naturellement
+            await Task.Delay(1000);
 
             if (accesAutorise)
-            {
                 new MainWindow().Show();
-            }
             else
-            {
                 new FenetreEnregistrement().Show();
-            }
+
             this.Close();
         }
 
-        // --- MÉTHODE ULTRA-ROBUSTE POUR OUVRIR LE NAVIGATEUR ---
+        private async Task AnimerBarre()
+        {
+            for (int i = 0; i <= 100; i++)
+            {
+                BarreSplash.Value = i;
+                await Task.Delay(20);
+            }
+        }
+
         private void OuvrirLienWeb(string url)
         {
             try
@@ -135,11 +145,14 @@ namespace VideoIA_Tri
                 try
                 {
                     url = url.Replace("&", "^&");
-                    Process.Start(new ProcessStartInfo("cmd", $"/c start {url}") { CreateNoWindow = true });
+                    Process.Start(new ProcessStartInfo("cmd", $"/c start {url}")
+                    {
+                        CreateNoWindow = true
+                    });
                 }
                 catch
                 {
-                    MessageBox.Show("Impossible d'ouvrir le navigateur automatiquement.\nVoici le lien à copier :\n\n" + url, "Lien de mise à jour", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("Impossible d'ouvrir le navigateur.\nLien :\n" + url);
                 }
             }
         }

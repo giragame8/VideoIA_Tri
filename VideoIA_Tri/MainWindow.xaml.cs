@@ -17,6 +17,8 @@ using System.Text.RegularExpressions;
 using System.Drawing; // pour Bitmap (Tesseract)
 using Tesseract;
 using Microsoft.WindowsAPICodePack.Dialogs;
+using Microsoft.Toolkit.Uwp.Notifications;
+
 
 namespace VideoIA_Tri
 {
@@ -103,6 +105,11 @@ namespace VideoIA_Tri
             BarreProgression.Value = 100;
             TxtPourcentage.Text = "100%";
             BtnLancerAnalyse.IsEnabled = true;
+            NotifierFinAnalyse();
+
+
+            // Notification simple (sans package externe)
+            NotifierFinAnalyse();
         }
 
         private void AnalyserVideos(string[] fichiers)
@@ -313,13 +320,11 @@ namespace VideoIA_Tri
             }
         }
 
-        // Fenêtre À propos
         private void BtnApropos_Click(object sender, RoutedEventArgs e)
         {
             new FenetreApropos().ShowDialog();
         }
 
-        // Ouverture FenetrePreuve
         private void ImagePreuve_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             var img = sender as System.Windows.Controls.Image;
@@ -330,5 +335,16 @@ namespace VideoIA_Tri
                 new FenetrePreuve(ev).ShowDialog();
             }
         }
+
+        private void NotifierFinAnalyse()
+        {
+            new ToastContentBuilder()
+                .AddText("Analyse terminée")
+                .AddText("Toutes les vidéos ont été traitées.")
+                .Show();
+        }
     }
 }
+
+
+
