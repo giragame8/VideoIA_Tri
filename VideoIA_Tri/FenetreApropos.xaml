@@ -16,7 +16,7 @@
         </Border>
 
         <StackPanel Margin="0,20,0,0">
-            <TextBlock Text="Version : V1.2.8" HorizontalAlignment="Center"/>
+            <TextBlock Text="Version : V1.2.9" HorizontalAlignment="Center"/>
             <TextBlock Name="TxtLicence" Text="Licence : ..." HorizontalAlignment="Center" Foreground="Gray" Margin="0,5,0,15" FontSize="10" TextWrapping="Wrap"/>
             <TextBlock Text="Support : elliottmag8@gmail.com" HorizontalAlignment="Center" Foreground="#FF007ACC"/>
         </StackPanel>

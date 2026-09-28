@@ -12,41 +12,32 @@ using OpenCvSharp;
 using OpenCvSharp.Dnn;
 using CsvHelper;
 using CsvHelper.Configuration;
-using CsvHelper.Configuration.Attributes;
 using System.Globalization;
 using System.Text.RegularExpressions;
-using System.Drawing;
+using System.Drawing; // pour Bitmap (Tesseract)
 using Tesseract;
 using Microsoft.WindowsAPICodePack.Dialogs;
 
 namespace VideoIA_Tri
 {
-    public class EvenementVideo
-    {
-        [Ignore] public System.Windows.Media.ImageSource ImagePreuve { get; set; }
-        public string FichierSource { get; set; }
-        public string TypeEvenement { get; set; }
-        public string HeureIncrustee { get; set; }
-        public string RepereTempsLecteur { get; set; }
-
-        [Ignore] public string CheminComplet { get; set; }
-        [Ignore] public double Millisecondes { get; set; }
-    }
-
     public partial class MainWindow : System.Windows.Window
     {
         public ObservableCollection<EvenementVideo> ListeEvenements { get; set; }
         private ICollectionView VueFiltree;
         private string dossierSelectionne = "";
 
+        private bool estModeSombre = false;
+        private bool estDispositionInversee = false;
+
         public MainWindow()
         {
             InitializeComponent();
-            ListeEvenements = new ObservableCollection<EvenementVideo>();
 
+            ListeEvenements = new ObservableCollection<EvenementVideo>();
             VueFiltree = CollectionViewSource.GetDefaultView(ListeEvenements);
             VueFiltree.Filter = FiltrerResultats;
-            GridEvenements.ItemsSource = VueFiltree;
+
+            ZoneTableau.ItemsSource = VueFiltree;
         }
 
         private bool FiltrerResultats(object obj)
@@ -63,14 +54,9 @@ namespace VideoIA_Tri
             return matchTexte && matchType;
         }
 
-        // --- CORRECTION DU BUG ICI ---
         private void Filtre_Changed(object sender, EventArgs e)
         {
-            // On vérifie que le filtre existe bien avant d'essayer de le mettre à jour !
-            if (VueFiltree != null)
-            {
-                VueFiltree.Refresh();
-            }
+            VueFiltree?.Refresh();
         }
 
         private void BtnChoisirDossier_Click(object sender, RoutedEventArgs e)
@@ -80,29 +66,35 @@ namespace VideoIA_Tri
             {
                 dossierSelectionne = dialog.FileName;
                 TxtStatut.Text = $"Dossier : {Path.GetFileName(dossierSelectionne)}";
-                BtnAnalyser.IsEnabled = true;
+                BtnLancerAnalyse.IsEnabled = true;
             }
         }
 
-        private async void BtnAnalyser_Click(object sender, RoutedEventArgs e)
+        private async void BtnLancerAnalyse_Click(object sender, RoutedEventArgs e)
         {
-            BtnAnalyser.IsEnabled = false;
+            BtnLancerAnalyse.IsEnabled = false;
             ListeEvenements.Clear();
             BarreProgression.Value = 0;
             TxtPourcentage.Text = "0%";
 
             var fichiers = Directory.GetFiles(dossierSelectionne)
-                .Where(f => new[] {".mp4", ".ts", ".avi", ".mkv",
-".mov", ".mpeg", ".mpg", ".m4v",
-".webm", ".flv", ".f4v",
-".3gp", ".mjpg", ".mjpeg",
-".trp", ".rec", ".vob",
-".rmvb", ".av1", ".m4s",
-".iva"
- }.Contains(Path.GetExtension(f).ToLower()))
+                .Where(f => new[] {
+                    ".mp4", ".ts", ".avi", ".mkv",
+                    ".mov", ".mpeg", ".mpg", ".m4v",
+                    ".webm", ".flv", ".f4v",
+                    ".3gp", ".mjpg", ".mjpeg",
+                    ".trp", ".rec", ".vob",
+                    ".rmvb", ".av1", ".m4s",
+                    ".iva"
+                }.Contains(Path.GetExtension(f).ToLower()))
                 .ToArray();
 
-            if (fichiers.Length == 0) return;
+            if (fichiers.Length == 0)
+            {
+                MessageBox.Show("Aucune vidéo trouvée.");
+                BtnLancerAnalyse.IsEnabled = true;
+                return;
+            }
 
             TxtStatut.Text = "Analyse en cours...";
             await Task.Run(() => AnalyserVideos(fichiers));
@@ -110,7 +102,7 @@ namespace VideoIA_Tri
             TxtStatut.Text = "Analyse terminée !";
             BarreProgression.Value = 100;
             TxtPourcentage.Text = "100%";
-            BtnAnalyser.IsEnabled = true;
+            BtnLancerAnalyse.IsEnabled = true;
         }
 
         private void AnalyserVideos(string[] fichiers)
@@ -183,26 +175,37 @@ namespace VideoIA_Tri
                     int colonnes = 8400;
                     float[] donnees = new float[84 * colonnes];
                     System.Runtime.InteropServices.Marshal.Copy(output.Data, donnees, 0, donnees.Length);
+
                     float maxC = 0; int bestIdx = -1; int bestClass = -1;
+
                     for (int i = 0; i < colonnes; i++)
                     {
-                        float p = donnees[4 * colonnes + i]; float v = donnees[6 * colonnes + i];
+                        float p = donnees[4 * colonnes + i];
+                        float v = donnees[6 * colonnes + i];
+
                         if (p > 0.60f && p > maxC) { maxC = p; bestIdx = i; bestClass = 0; }
                         if (v > 0.60f && v > maxC) { maxC = v; bestIdx = i; bestClass = 2; }
                     }
+
                     if (bestIdx != -1)
                     {
                         float xc = donnees[0 * colonnes + bestIdx], yc = donnees[1 * colonnes + bestIdx];
                         float w = donnees[2 * colonnes + bestIdx], h = donnees[3 * colonnes + bestIdx];
-                        float sx = (float)frame.Width / 640f, sy = (float)frame.Height / 640f;
-                        int x = (int)((xc - w / 2) * sx), y = (int)((yc - h / 2) * sy);
+
+                        float sx = (float)frame.Width / 640f;
+                        float sy = (float)frame.Height / 640f;
+
+                        int x = (int)((xc - w / 2) * sx);
+                        int y = (int)((yc - h / 2) * sy);
 
                         x = Math.Max(0, x);
                         y = Math.Max(0, y);
+
                         int width = Math.Min(frame.Width - x, (int)(w * sx));
                         int height = Math.Min(frame.Height - y, (int)(h * sy));
 
                         Cv2.Rectangle(frame, new OpenCvSharp.Rect(x, y, width, height), Scalar.LimeGreen, 3);
+
                         return bestClass == 0 ? "Personne" : "Voiture";
                     }
                 }
@@ -216,8 +219,11 @@ namespace VideoIA_Tri
             var img = new System.Windows.Media.Imaging.BitmapImage();
             using (var ms = new MemoryStream(data))
             {
-                img.BeginInit(); img.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-                img.StreamSource = ms; img.EndInit(); img.Freeze();
+                img.BeginInit();
+                img.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                img.StreamSource = ms;
+                img.EndInit();
+                img.Freeze();
             }
             return img;
         }
@@ -230,8 +236,10 @@ namespace VideoIA_Tri
                 using (Mat gray = new Mat())
                 {
                     Cv2.CvtColor(cut, gray, ColorConversionCodes.BGR2GRAY);
-                    Cv2.Resize(gray, gray, new OpenCvSharp.Size(0, 0), 2.5, 2.5, InterpolationFlags.Cubic); // Ajout d'un petit zoom pour l'OCR
+                    Cv2.Resize(gray, gray, new OpenCvSharp.Size(0, 0), 2.5, 2.5, InterpolationFlags.Cubic);
+
                     Cv2.ImEncode(".bmp", gray, out byte[] b);
+
                     using (var ms = new MemoryStream(b))
                     using (Bitmap bmp = new Bitmap(ms))
                     using (var p = engine.Process(bmp, PageSegMode.Auto))
@@ -244,25 +252,83 @@ namespace VideoIA_Tri
             catch { return "--:--:--"; }
         }
 
-        private void BtnExporter_Click(object sender, RoutedEventArgs e)
+        private void BtnExporterExcel_Click(object sender, RoutedEventArgs e)
         {
-            if (ListeEvenements.Count == 0) return;
+            if (ListeEvenements.Count == 0)
+            {
+                MessageBox.Show("Aucun événement à exporter.");
+                return;
+            }
+
             string path = Path.Combine(dossierSelectionne, "Rapport_V1.2.csv");
+
             using (var sw = new StreamWriter(path, false, Encoding.UTF8))
             using (var csv = new CsvWriter(sw, new CsvConfiguration(CultureInfo.InvariantCulture) { Delimiter = ";" }))
             {
                 csv.WriteRecords(ListeEvenements);
             }
+
             MessageBox.Show("Export Excel OK : \n" + path, "Succès");
         }
 
+        private void BtnChangerTheme_Click(object sender, RoutedEventArgs e)
+        {
+            estModeSombre = !estModeSombre;
+            string nomDictionnaire = estModeSombre ? "ThemeSombre.xaml" : "ThemeClair.xaml";
+
+            ResourceDictionary nouveauTheme = new ResourceDictionary()
+            {
+                Source = new Uri(nomDictionnaire, UriKind.Relative)
+            };
+
+            Application.Current.Resources.MergedDictionaries.Clear();
+            Application.Current.Resources.MergedDictionaries.Add(nouveauTheme);
+
+            BtnChangerTheme.Content = estModeSombre ? "Mode Clair" : "Mode Sombre";
+        }
+
+        private void BtnChangerDisposition_Click(object sender, RoutedEventArgs e)
+        {
+            estDispositionInversee = !estDispositionInversee;
+
+            if (estDispositionInversee)
+            {
+                Grid.SetColumn(ZoneVideo, 1);
+                ZoneVideo.Margin = new Thickness(10, 0, 0, 0);
+
+                Grid.SetColumn(ZoneTableau, 0);
+
+                ColGauche.Width = new GridLength(60, GridUnitType.Star);
+                ColDroite.Width = new GridLength(40, GridUnitType.Star);
+            }
+            else
+            {
+                Grid.SetColumn(ZoneVideo, 0);
+                ZoneVideo.Margin = new Thickness(0, 0, 10, 0);
+
+                Grid.SetColumn(ZoneTableau, 1);
+
+                ColGauche.Width = new GridLength(40, GridUnitType.Star);
+                ColDroite.Width = new GridLength(60, GridUnitType.Star);
+            }
+        }
+
+        // Fenêtre À propos
+        private void BtnApropos_Click(object sender, RoutedEventArgs e)
+        {
+            new FenetreApropos().ShowDialog();
+        }
+
+        // Ouverture FenetrePreuve
         private void ImagePreuve_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             var img = sender as System.Windows.Controls.Image;
             var ev = img?.DataContext as EvenementVideo;
-            if (ev != null) new FenetrePreuve(ev).ShowDialog();
-        }
 
-        private void BtnApropos_Click(object sender, RoutedEventArgs e) => new FenetreApropos().ShowDialog();
+            if (ev != null)
+            {
+                new FenetrePreuve(ev).ShowDialog();
+            }
+        }
     }
 }

@@ -178,6 +178,7 @@
       <SubType>Designer</SubType>
     </ApplicationDefinition>
     <Compile Include="CloudManager.cs" />
+    <Compile Include="EvenementVideo.cs" />
     <Compile Include="FenetreApropos.xaml.cs">
       <DependentUpon>FenetreApropos.xaml</DependentUpon>
     </Compile>
@@ -215,6 +216,14 @@
       <SubType>Code</SubType>
     </Compile>
     <Page Include="SplashScreenWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="ThemeClair.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="ThemeSombre.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

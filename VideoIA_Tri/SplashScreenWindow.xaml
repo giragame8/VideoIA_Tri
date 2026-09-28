@@ -10,7 +10,7 @@
             <TextBlock Text="Scanner Vidéo IA Pro" Foreground="White" FontSize="36" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,5"/>
             <TextBlock Text="Créé par Elliott Magnier" Foreground="#FF007ACC" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,25"/>
             <ProgressBar IsIndeterminate="True" Width="250" Height="6" Foreground="#FF007ACC" Background="#333333" BorderThickness="0" Margin="0,0,0,25"/>
-            <TextBlock Text="Version V1.2.8" Foreground="Gray" FontSize="14" HorizontalAlignment="Center"/>
+            <TextBlock Text="Version V1.2.9" Foreground="Gray" FontSize="14" HorizontalAlignment="Center"/>
             <TextBlock Text="Initialisation du moteur d'Intelligence Artificielle..." Foreground="DarkGray" FontSize="12" HorizontalAlignment="Center" Margin="0,5,0,0"/>
         </StackPanel>
     </Grid>

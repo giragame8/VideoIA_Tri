@@ -1,0 +1,12 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="BgPrincipal" Color="#181818"/>
+    <SolidColorBrush x:Key="BgSecondaire" Color="#252525"/>
+    <SolidColorBrush x:Key="TextePrincipal" Color="#E0E0E0"/>
+    <SolidColorBrush x:Key="TexteSecondaire" Color="#AAAAAA"/>
+    <SolidColorBrush x:Key="CouleurPrimaire" Color="#9C27B0"/>
+    <!-- Violet ajusté pour le sombre -->
+    <SolidColorBrush x:Key="CouleurBoutonBleu" Color="#005A9E"/>
+    <SolidColorBrush x:Key="TexteBouton" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Bordure" Color="#333333"/>
+</ResourceDictionary>
