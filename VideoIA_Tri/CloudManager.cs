@@ -5,6 +5,14 @@ using System.Threading.Tasks;
 
 namespace SharedLogic
 {
+    public enum StatutSupportVersion
+    {
+        A_Jour,
+        MiseAJourDisponible,  // 1 à 4 révisions / versions de retard
+        BientotObsolete,       // 5 à 9 révisions / versions de retard
+        NonSupporte            // >= 10 révisions / versions de retard
+    }
+
     public static class CloudManager
     {
         private static readonly string WebAppUrl = "https://script.google.com/macros/s/AKfycbxpYvDVOppiqGLMfzan6bIUIyNqBa_XMv79EMrGnxSrqmSCpFPkkBAkXEs_GEttLh4L/exec";
@@ -18,26 +26,6 @@ namespace SharedLogic
             return new HttpClient(handler);
         }
 
-        public static async Task EnvoyerAction(string action, string donnees)
-        {
-            try
-            {
-                using (HttpClient client = ObtenirClientHttp())
-                {
-                    // Envoi en POST sur l'URL du script
-                    var parametres = new Dictionary<string, string>
-                    {
-                        { "action", action },
-                        { "data", donnees }
-                    };
-
-                    var content = new FormUrlEncodedContent(parametres);
-                    await client.PostAsync(WebAppUrl, content);
-                }
-            }
-            catch { }
-        }
-
         public static async Task<string> VerifierMiseAJour()
         {
             try
@@ -48,6 +36,64 @@ namespace SharedLogic
                 }
             }
             catch { return ""; }
+        }
+
+        public static StatutSupportVersion EvaluerStatutVersion(Version versionActuelle, Version versionServeur, out int ecart)
+        {
+            ecart = 0;
+            if (versionServeur <= versionActuelle)
+                return StatutSupportVersion.A_Jour;
+
+            // 1. Changement de Version Majeure (ex: 1.3.9.0 -> 2.0.0.0)
+            if (versionServeur.Major > versionActuelle.Major)
+            {
+                ecart = (versionServeur.Major - versionActuelle.Major) * 10;
+            }
+            // 2. Changement de Version Mineure (ex: 1.3.9.0 -> 1.4.0.0)
+            else if (versionServeur.Minor > versionActuelle.Minor)
+            {
+                // Un saut de version mineure (1.3 -> 1.4) compte pour au moins 1 version d'écart
+                int diffMinor = versionServeur.Minor - versionActuelle.Minor;
+
+                // Si c'est juste la mineure suivante (ex: 1.3 -> 1.4), c'est une simple mise à jour (ecart = 1)
+                ecart = diffMinor;
+            }
+            // 3. Changement de Build (ex: 1.3.1.0 -> 1.3.2.0)
+            else if (versionServeur.Build > versionActuelle.Build)
+            {
+                ecart = versionServeur.Build - versionActuelle.Build;
+            }
+            // 4. Correctif d'entre-deux / Revision (ex: 1.3.1.0 -> 1.3.1.5)
+            else
+            {
+                ecart = 1;
+            }
+
+            if (ecart <= 0) ecart = 1;
+
+            if (ecart >= 10)
+                return StatutSupportVersion.NonSupporte;
+            if (ecart >= 5)
+                return StatutSupportVersion.BientotObsolete;
+
+            return StatutSupportVersion.MiseAJourDisponible;
+        }
+
+        public static async Task EnvoyerAction(string action, string donnees)
+        {
+            try
+            {
+                using (HttpClient client = ObtenirClientHttp())
+                {
+                    var parametres = new Dictionary<string, string>
+                    {
+                        { "action", action },
+                        { "data", donnees }
+                    };
+                    await client.PostAsync(WebAppUrl, new FormUrlEncodedContent(parametres));
+                }
+            }
+            catch { }
         }
 
         public static async Task<string> GetActivations()

@@ -1,160 +1,161 @@
 ﻿using System;
 using System.Diagnostics;
-using System.IO;
 using System.Reflection;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Forms; // Nécessaire pour NotifyIcon
+using System.Windows.Media.Animation;
 using SharedLogic;
 
 namespace VideoIA_Tri
 {
     public partial class SplashScreenWindow : Window
     {
-        private readonly string CLE_SECRETE = "ElliottVideoIAPro_SecureKey_2026";
-        private string cheminUser = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ScannerVideoIA", "user.txt");
-
         public SplashScreenWindow()
         {
             InitializeComponent();
-            this.ContentRendered += SplashScreenWindow_ContentRendered;
+            _ = InitialiserLogicielAsync();
         }
 
-        private async void SplashScreenWindow_ContentRendered(object sender, EventArgs e)
-        {
-            _ = AnimerBarre();
-            await Task.Delay(500);
-
-            // 1. Vérification de mise à jour
-            try
-            {
-                string updateData = await CloudManager.VerifierMiseAJour();
-                if (!string.IsNullOrEmpty(updateData) && updateData.Contains("|"))
-                {
-                    string[] parts = updateData.Split('|');
-                    string versionEnLigneStr = parts[0].Trim();
-                    string lienTelechargement = parts[1].Trim(); // ✅ CORRECTION : Trim()
-
-                    Version versionActuelle = Assembly.GetExecutingAssembly().GetName().Version;
-
-                    if (Version.TryParse(versionEnLigneStr, out Version versionEnLigne))
-                    {
-                        if (versionEnLigne > versionActuelle)
-                        {
-                            MessageBoxResult rep = MessageBox.Show(
-                                $"Une nouvelle version est disponible !\n\nVersion actuelle : {versionActuelle}\nNouvelle version : {versionEnLigne}\n\nVoulez-vous la télécharger maintenant ?",
-                                "Mise à jour disponible",
-                                MessageBoxButton.YesNo,
-                                MessageBoxImage.Question);
-
-                            if (rep == MessageBoxResult.Yes)
-                            {
-                                OuvrirLienWeb(lienTelechargement);
-                                Application.Current.Shutdown();
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
-            catch { }
-
-            // 2. Vérification licence
-            bool accesAutorise = false;
-            DateTime dateExpiration = DateTime.MinValue;
-            string cleUtilisee = "";
-
-            if (File.Exists(cheminUser))
-            {
-                try
-                {
-                    string clair = Encoding.UTF8.GetString(
-                        Convert.FromBase64String(File.ReadAllText(cheminUser)));
-                    string[] p = clair.Split(';');
-                    if (p.Length >= 5)
-                    {
-                        cleUtilisee = p[4];
-                        string dec = FenetreEnregistrement.DecrypterAES(cleUtilisee, CLE_SECRETE);
-                        string[] cP = dec.Split('|');
-                        dateExpiration = DateTime.Parse(cP[3]);
-
-                        if (cP[0] == Environment.MachineName && DateTime.Now <= dateExpiration)
-                        {
-                            accesAutorise = true;
-                        }
-                    }
-                }
-                catch { }
-
-                if (accesAutorise)
-                {
-                    bool estBannie = await CloudManager.EstCleRevoguee(cleUtilisee);
-                    if (estBannie)
-                    {
-                        accesAutorise = false;
-                        MessageBox.Show("Cette licence a été révoquée.", "Accès Suspendu",
-                            MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
-                }
-
-                if (!accesAutorise)
-                {
-                    File.Delete(cheminUser);
-                }
-                else
-                {
-                    int joursRestants = (int)(dateExpiration - DateTime.Now).TotalDays;
-                    if (joursRestants <= 30 && joursRestants > 0)
-                    {
-                        MessageBox.Show(
-                            $"Attention : Votre licence expire dans {joursRestants} jours.",
-                            "Alerte", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    }
-                }
-            }
-
-            await Task.Delay(1000);
-
-            if (accesAutorise)
-                new MainWindow().Show();
-            else
-                new FenetreEnregistrement().Show();
-
-            this.Close();
-        }
-
-        private async Task AnimerBarre()
-        {
-            for (int i = 0; i <= 100; i++)
-            {
-                BarreSplash.Value = i;
-                await Task.Delay(20);
-            }
-        }
-
-        private void OuvrirLienWeb(string url)
+        private async Task InitialiserLogicielAsync()
         {
             try
             {
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                AnimerBarreFluide(0, 30, 400);
+                MettreAJourTexte("Chargement des composants...");
+                await Task.Delay(450);
+
+                AnimerBarreFluide(30, 60, 400);
+                MettreAJourTexte("Vérification des versions réseau...");
+                await Task.Delay(450);
+
+                Version versionActuelle = Assembly.GetExecutingAssembly().GetName().Version;
+                string reponseMAJ = await CloudManager.VerifierMiseAJour();
+
+                AnimerBarreFluide(60, 85, 300);
+                MettreAJourTexte("Analyse de la licence...");
+
+                if (!string.IsNullOrWhiteSpace(reponseMAJ) && reponseMAJ.Contains("|"))
+                {
+                    var parts = reponseMAJ.Split('|');
+                    string strVersionServeur = parts[0].Trim();
+
+                    // Normalisation sur 4 chiffres si nécessaire
+                    if (!strVersionServeur.Contains(".")) strVersionServeur += ".0.0.0";
+                    else if (strVersionServeur.Split('.').Length == 2) strVersionServeur += ".0.0";
+                    else if (strVersionServeur.Split('.').Length == 3) strVersionServeur += ".0";
+
+                    if (Version.TryParse(strVersionServeur, out Version versionServeur))
+                    {
+                        string urlTelechargement = parts.Length > 1 ? parts[1] : "";
+                        var statut = CloudManager.EvaluerStatutVersion(versionActuelle, versionServeur, out int ecart);
+
+                        switch (statut)
+                        {
+                            case StatutSupportVersion.MiseAJourDisponible:
+                                // 1 à 4 révisions de retard : Information simple
+                                AfficherNotificationWindows(
+                                    "Mise à jour disponible ℹ️",
+                                    $"Version {versionServeur} disponible (Installée: {versionActuelle}). Cliquez pour télécharger.",
+                                    ToolTipIcon.Info,
+                                    urlTelechargement
+                                );
+                                break;
+
+                            case StatutSupportVersion.BientotObsolete:
+                                // 5 à 9 révisions de retard : Avertissement
+                                AfficherNotificationWindows(
+                                    "Version bientôt obsolète ⚠️",
+                                    $"Votre version ({versionActuelle}) a {ecart} révisions de retard sur la {versionServeur}. Cliquez pour mettre à jour.",
+                                    ToolTipIcon.Warning,
+                                    urlTelechargement
+                                );
+                                break;
+
+                            case StatutSupportVersion.NonSupporte:
+                                // 10 révisions et plus : Alerte critique
+                                AfficherNotificationWindows(
+                                    "Version non supportée ⛔",
+                                    $"Version {versionActuelle} obsolète (Officielle: {versionServeur}). Support désactivé. Cliquez pour télécharger.",
+                                    ToolTipIcon.Error,
+                                    urlTelechargement
+                                );
+                                break;
+                        }
+                    }
+                }
+
+                AnimerBarreFluide(85, 100, 300);
+                MettreAJourTexte("Lancement de l'application...");
+                await Task.Delay(350);
+
+                MainWindow main = new MainWindow();
+                main.Show();
+                this.Close();
             }
             catch
             {
+                MainWindow main = new MainWindow();
+                main.Show();
+                this.Close();
+            }
+        }
+
+        private void AfficherNotificationWindows(string titre, string message, ToolTipIcon icone, string url)
+        {
+            Dispatcher.Invoke(() =>
+            {
                 try
                 {
-                    url = url.Replace("&", "^&");
-                    Process.Start(new ProcessStartInfo("cmd", $"/c start {url}")
+                    NotifyIcon notifyIcon = new NotifyIcon
                     {
-                        CreateNoWindow = true
-                    });
+                        Icon = System.Drawing.SystemIcons.Information,
+                        Visible = true,
+                        BalloonTipTitle = titre,
+                        BalloonTipText = message,
+                        BalloonTipIcon = icone
+                    };
+
+                    // Redirection au clic sur le toast
+                    notifyIcon.BalloonTipClicked += (s, e) =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(url))
+                        {
+                            Process.Start(url);
+                        }
+                        notifyIcon.Dispose();
+                    };
+
+                    notifyIcon.ShowBalloonTip(6000);
                 }
-                catch
+                catch { }
+            });
+        }
+
+        private void AnimerBarreFluide(double valeurDepart, double valeurArrivee, int dureeMs)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                if (BarreSplash != null)
                 {
-                    MessageBox.Show("Impossible d'ouvrir le navigateur.\nLien :\n" + url);
+                    DoubleAnimation animation = new DoubleAnimation
+                    {
+                        From = valeurDepart,
+                        To = valeurArrivee,
+                        Duration = new Duration(TimeSpan.FromMilliseconds(dureeMs)),
+                        EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                    };
+                    BarreSplash.BeginAnimation(System.Windows.Controls.Primitives.RangeBase.ValueProperty, animation);
                 }
-            }
+            });
+        }
+
+        private void MettreAJourTexte(string message)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                if (TxtStatus != null) TxtStatus.Text = message;
+            });
         }
     }
 }

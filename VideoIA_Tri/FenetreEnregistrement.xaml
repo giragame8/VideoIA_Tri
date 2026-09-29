@@ -1,7 +1,7 @@
 ﻿<Window x:Class="VideoIA_Tri.FenetreEnregistrement"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Activation VideoIA_Tri" Height="480" Width="380"
+        Title="Activation VideoIA_Tri" Height="508.916" Width="380"
         WindowStartupLocation="CenterScreen" Background="#F4F4F4" FontFamily="Segoe UI">
 
     <Border Background="White" Margin="15" Padding="20" BorderBrush="#DDD" BorderThickness="1" CornerRadius="8">
