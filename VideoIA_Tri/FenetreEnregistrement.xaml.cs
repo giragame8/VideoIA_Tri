@@ -3,6 +3,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
+using System.Windows.Forms; // Pour NotifyIcon
 using SharedLogic;
 
 namespace VideoIA_Tri
@@ -18,12 +19,11 @@ namespace VideoIA_Tri
             TxtCodeMachine.Text = Environment.MachineName;
         }
 
-        // --- 1. ACTIVATION CLASSIQUE ---
         private async void BtnValider_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrWhiteSpace(TxtPrenom.Text) || string.IsNullOrWhiteSpace(TxtNom.Text) || string.IsNullOrWhiteSpace(TxtLicence.Text))
             {
-                MessageBox.Show("Veuillez remplir tous les champs.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+                System.Windows.MessageBox.Show("Veuillez remplir tous les champs.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -37,20 +37,20 @@ namespace VideoIA_Tri
                 {
                     if (parts[0] != Environment.MachineName)
                     {
-                        MessageBox.Show("Cette licence n'est pas valide pour cet ordinateur !", "Fraude Détectée", MessageBoxButton.OK, MessageBoxImage.Error);
+                        System.Windows.MessageBox.Show("Cette licence n'est pas valide pour cet ordinateur !", "Fraude Détectée", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
 
                     if (DateTime.Now > DateTime.Parse(parts[3]))
                     {
-                        MessageBox.Show("Cette licence a expiré.", "Expiration", MessageBoxButton.OK, MessageBoxImage.Error);
+                        System.Windows.MessageBox.Show("Cette licence a expiré.", "Expiration", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
 
                     bool estBannie = await CloudManager.EstCleRevoguee(cleSaisie);
                     if (estBannie)
                     {
-                        MessageBox.Show("Cette licence a été révoquée par l'administrateur. Activation impossible.", "Accès Refusé", MessageBoxButton.OK, MessageBoxImage.Error);
+                        System.Windows.MessageBox.Show("Cette licence a été révoquée par l'administrateur.", "Accès Refusé", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
 
@@ -62,7 +62,9 @@ namespace VideoIA_Tri
 
                     await CloudManager.EnvoyerAction("ACT", $"{TxtPrenom.Text}|{TxtNom.Text}|{Environment.MachineName}|{cleSaisie}");
 
-                    MessageBox.Show("Activation réussie ! Bienvenue.", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
+                    // Notification Windows de succès
+                    EnvoyerNotificationWindows("Activation réussie 🎉", $"Bienvenue {TxtPrenom.Text} ! Votre licence est activée.", ToolTipIcon.Info);
+
                     new MainWindow().Show();
                     this.Close();
                 }
@@ -73,11 +75,10 @@ namespace VideoIA_Tri
             }
             catch
             {
-                MessageBox.Show("Clé de licence invalide ou corrompue.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show("Clé de licence invalide ou corrompue.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        // --- 2. ACTIVATION DE L'ESSAI GRATUIT (NOUVEAU) ---
         private async void BtnEssai_Click(object sender, RoutedEventArgs e)
         {
             BtnEssai.IsEnabled = false;
@@ -85,46 +86,59 @@ namespace VideoIA_Tri
 
             try
             {
-                // 1. Vérifier si le PC a déjà profité de l'essai
                 bool dejaFait = await CloudManager.ADejaFaitEssai(Environment.MachineName);
                 if (dejaFait)
                 {
-                    MessageBox.Show("Cet ordinateur a déjà bénéficié de la période d'essai.", "Refusé", MessageBoxButton.OK, MessageBoxImage.Error);
+                    System.Windows.MessageBox.Show("Cet ordinateur a déjà bénéficié de la période d'essai.", "Refusé", MessageBoxButton.OK, MessageBoxImage.Error);
                     BtnEssai.IsEnabled = true;
                     BtnEssai.Content = "Démarrer l'essai gratuit (15 jours)";
                     return;
                 }
 
-                // 2. Générer une clé d'essai unique localement
                 DateTime exp = DateTime.Now.AddDays(15);
                 string uid = Guid.NewGuid().ToString().Substring(0, 8);
                 string payload = $"{Environment.MachineName}|Essai Gratuit|Essai|{exp:yyyy-MM-dd}|{uid}";
                 string cleEssai = ChiffrerAES(payload, CLE_SECRETE);
 
-                // 3. Sauvegarder la clé localement
                 string dossier = Path.GetDirectoryName(cheminUser);
                 if (!Directory.Exists(dossier)) Directory.CreateDirectory(dossier);
 
-                // On met "Utilisateur" "Essai" à la place du Nom/Prénom
                 string infosClair = $"Utilisateur;Essai;Essai Gratuit;Essai;{cleEssai}";
                 File.WriteAllText(cheminUser, Convert.ToBase64String(Encoding.UTF8.GetBytes(infosClair)));
 
-                // 4. Inscrire le PC dans Google Sheets pour l'empêcher de recommencer
                 await CloudManager.EnvoyerAction("TRIAL", $"{Environment.MachineName}|{cleEssai}|{exp:yyyy-MM-dd}");
 
-                MessageBox.Show($"Essai de 15 jours activé avec succès !\nValable jusqu'au {exp:dd/MM/yyyy}.", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
+                // Notification Windows Essai
+                EnvoyerNotificationWindows("Essai gratuit activé 🎁", $"15 jours d'essai activés (Valable jusqu'au {exp:dd/MM/yyyy}).", ToolTipIcon.Info);
+
                 new MainWindow().Show();
                 this.Close();
             }
             catch
             {
-                MessageBox.Show("Impossible de se connecter au serveur pour valider l'essai. Vérifiez votre connexion internet.", "Erreur réseau", MessageBoxButton.OK, MessageBoxImage.Warning);
+                System.Windows.MessageBox.Show("Impossible de se connecter au serveur pour valider l'essai. Vérifiez votre connexion internet.", "Erreur réseau", MessageBoxButton.OK, MessageBoxImage.Warning);
                 BtnEssai.IsEnabled = true;
                 BtnEssai.Content = "Démarrer l'essai gratuit (15 jours)";
             }
         }
 
-        // --- 3. FONCTIONS DE CRYPTAGE ---
+        private void EnvoyerNotificationWindows(string titre, string message, ToolTipIcon icone)
+        {
+            try
+            {
+                NotifyIcon notifyIcon = new NotifyIcon
+                {
+                    Icon = System.Drawing.SystemIcons.Information,
+                    Visible = true,
+                    BalloonTipTitle = titre,
+                    BalloonTipText = message,
+                    BalloonTipIcon = icone
+                };
+                notifyIcon.ShowBalloonTip(5000);
+            }
+            catch { }
+        }
+
         public static string DecrypterAES(string texteBase64, string mdp)
         {
             byte[] iv = new byte[16];

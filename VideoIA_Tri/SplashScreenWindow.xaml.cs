@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Forms; // Nécessaire pour NotifyIcon
@@ -11,6 +13,12 @@ namespace VideoIA_Tri
 {
     public partial class SplashScreenWindow : Window
     {
+        private readonly string cheminUser = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ScannerVideoIA",
+            "user.txt"
+        );
+
         public SplashScreenWindow()
         {
             InitializeComponent();
@@ -21,26 +29,23 @@ namespace VideoIA_Tri
         {
             try
             {
-                AnimerBarreFluide(0, 30, 400);
+                AnimerBarreFluide(0, 25, 300);
                 MettreAJourTexte("Chargement des composants...");
-                await Task.Delay(450);
+                await Task.Delay(350);
 
-                AnimerBarreFluide(30, 60, 400);
-                MettreAJourTexte("Vérification des versions réseau...");
-                await Task.Delay(450);
+                AnimerBarreFluide(25, 50, 300);
+                MettreAJourTexte("Vérification des mises à jour...");
+                await Task.Delay(350);
 
+                // --- 1. VÉRIFICATION DE LA VERSION ---
                 Version versionActuelle = Assembly.GetExecutingAssembly().GetName().Version;
                 string reponseMAJ = await CloudManager.VerifierMiseAJour();
-
-                AnimerBarreFluide(60, 85, 300);
-                MettreAJourTexte("Analyse de la licence...");
 
                 if (!string.IsNullOrWhiteSpace(reponseMAJ) && reponseMAJ.Contains("|"))
                 {
                     var parts = reponseMAJ.Split('|');
                     string strVersionServeur = parts[0].Trim();
 
-                    // Normalisation sur 4 chiffres si nécessaire
                     if (!strVersionServeur.Contains(".")) strVersionServeur += ".0.0.0";
                     else if (strVersionServeur.Split('.').Length == 2) strVersionServeur += ".0.0";
                     else if (strVersionServeur.Split('.').Length == 3) strVersionServeur += ".0";
@@ -53,7 +58,6 @@ namespace VideoIA_Tri
                         switch (statut)
                         {
                             case StatutSupportVersion.MiseAJourDisponible:
-                                // 1 à 4 révisions de retard : Information simple
                                 AfficherNotificationWindows(
                                     "Mise à jour disponible ℹ️",
                                     $"Version {versionServeur} disponible (Installée: {versionActuelle}). Cliquez pour télécharger.",
@@ -63,20 +67,18 @@ namespace VideoIA_Tri
                                 break;
 
                             case StatutSupportVersion.BientotObsolete:
-                                // 5 à 9 révisions de retard : Avertissement
                                 AfficherNotificationWindows(
                                     "Version bientôt obsolète ⚠️",
-                                    $"Votre version ({versionActuelle}) a {ecart} révisions de retard sur la {versionServeur}. Cliquez pour mettre à jour.",
+                                    $"Votre version ({versionActuelle}) a {ecart} révision(s) de retard. Cliquez pour mettre à jour.",
                                     ToolTipIcon.Warning,
                                     urlTelechargement
                                 );
                                 break;
 
                             case StatutSupportVersion.NonSupporte:
-                                // 10 révisions et plus : Alerte critique
                                 AfficherNotificationWindows(
                                     "Version non supportée ⛔",
-                                    $"Version {versionActuelle} obsolète (Officielle: {versionServeur}). Support désactivé. Cliquez pour télécharger.",
+                                    $"Version {versionActuelle} obsolète (Officielle: {versionServeur}). Cliquez pour mettre à jour.",
                                     ToolTipIcon.Error,
                                     urlTelechargement
                                 );
@@ -85,19 +87,132 @@ namespace VideoIA_Tri
                     }
                 }
 
-                AnimerBarreFluide(85, 100, 300);
-                MettreAJourTexte("Lancement de l'application...");
+                AnimerBarreFluide(50, 80, 300);
+                MettreAJourTexte("Vérification de la licence...");
                 await Task.Delay(350);
 
-                MainWindow main = new MainWindow();
-                main.Show();
-                this.Close();
+                // --- 2. VÉRIFICATION STRICTE DE LA LICENCE ---
+                bool licenceValide = await VerifierLicenceAsync();
+
+                AnimerBarreFluide(80, 100, 200);
+                MettreAJourTexte("Lancement de l'application...");
+                await Task.Delay(250);
+
+                if (licenceValide)
+                {
+                    MainWindow main = new MainWindow();
+                    main.Show();
+                    this.Close();
+                }
+                else
+                {
+                    // Fichier absent ou licence invalide/expirée -> Redirection vers l'enregistrement
+                    FenetreEnregistrement enregistrement = new FenetreEnregistrement();
+                    enregistrement.Show();
+                    this.Close();
+                }
             }
             catch
             {
-                MainWindow main = new MainWindow();
-                main.Show();
+                // En cas d'erreur critique, on force la demande de licence
+                FenetreEnregistrement enregistrement = new FenetreEnregistrement();
+                enregistrement.Show();
                 this.Close();
+            }
+        }
+
+        private async Task<bool> VerifierLicenceAsync()
+        {
+            // Fichier AppData supprimé ou introuvable
+            if (!File.Exists(cheminUser))
+            {
+                AfficherNotificationWindows(
+                    "Licence requise 🔑",
+                    "Aucune licence active détectée. Veuillez saisir votre clé ou démarrer un essai gratuit.",
+                    ToolTipIcon.Warning,
+                    ""
+                );
+                return false;
+            }
+
+            try
+            {
+                string contenuBase64 = File.ReadAllText(cheminUser);
+                string contenuClair = Encoding.UTF8.GetString(Convert.FromBase64String(contenuBase64));
+                string[] parts = contenuClair.Split(';');
+
+                if (parts.Length < 5)
+                {
+                    AfficherNotificationWindows(
+                        "Licence corrompue ⚠️",
+                        "Fichier de licence invalide. Veuillez vous ré-enregistrer.",
+                        ToolTipIcon.Error,
+                        ""
+                    );
+                    return false;
+                }
+
+                string prenom = parts[0];
+                string cleLicence = parts[4];
+
+                // Révocation Google Sheets (Blacklist)
+                bool estRevoguee = await CloudManager.EstCleRevoguee(cleLicence);
+                if (estRevoguee)
+                {
+                    File.Delete(cheminUser);
+                    AfficherNotificationWindows(
+                        "Licence révoquée ⛔",
+                        "Votre licence a été désactivée par l'administrateur.",
+                        ToolTipIcon.Error,
+                        ""
+                    );
+                    return false;
+                }
+
+                // Décodage de la date d'expiration dans la clé AES
+                string decrypte = FenetreEnregistrement.DecrypterAES(cleLicence, "ElliottVideoIAPro_SecureKey_2026");
+                string[] dataKey = decrypte.Split('|');
+
+                if (dataKey.Length >= 4 && DateTime.TryParse(dataKey[3], out DateTime dateExp))
+                {
+                    if (DateTime.Now > dateExp)
+                    {
+                        AfficherNotificationWindows(
+                            "Licence expirée ⌛",
+                            $"Votre licence a expiré le {dateExp:dd/MM/yyyy}. Veuillez entrer une nouvelle clé.",
+                            ToolTipIcon.Warning,
+                            ""
+                        );
+                        return false;
+                    }
+
+                    int joursRestants = (dateExp - DateTime.Now).Days;
+
+                    if (joursRestants <= 7)
+                    {
+                        AfficherNotificationWindows(
+                            "Expiration imminente ⚠️",
+                            $"Bienvenue {prenom} ! Attention, votre licence expire dans {joursRestants} jour(s).",
+                            ToolTipIcon.Warning,
+                            ""
+                        );
+                    }
+                    else
+                    {
+                        AfficherNotificationWindows(
+                            "Bienvenue 👋",
+                            $"Licence active. Content de vous revoir {prenom} !",
+                            ToolTipIcon.Info,
+                            ""
+                        );
+                    }
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -116,17 +231,16 @@ namespace VideoIA_Tri
                         BalloonTipIcon = icone
                     };
 
-                    // Redirection au clic sur le toast
-                    notifyIcon.BalloonTipClicked += (s, e) =>
+                    if (!string.IsNullOrWhiteSpace(url))
                     {
-                        if (!string.IsNullOrWhiteSpace(url))
+                        notifyIcon.BalloonTipClicked += (s, e) =>
                         {
-                            Process.Start(url);
-                        }
-                        notifyIcon.Dispose();
-                    };
+                            try { Process.Start(url); } catch { }
+                            notifyIcon.Dispose();
+                        };
+                    }
 
-                    notifyIcon.ShowBalloonTip(6000);
+                    notifyIcon.ShowBalloonTip(5000);
                 }
                 catch { }
             });
