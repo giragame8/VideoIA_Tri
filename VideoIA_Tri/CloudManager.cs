@@ -9,14 +9,30 @@ namespace SharedLogic
     {
         private static readonly string WebAppUrl = "https://script.google.com/macros/s/AKfycbxpYvDVOppiqGLMfzan6bIUIyNqBa_XMv79EMrGnxSrqmSCpFPkkBAkXEs_GEttLh4L/exec";
 
+        private static HttpClient ObtenirClientHttp()
+        {
+            var handler = new HttpClientHandler
+            {
+                AllowAutoRedirect = true
+            };
+            return new HttpClient(handler);
+        }
+
         public static async Task EnvoyerAction(string action, string donnees)
         {
             try
             {
-                using (HttpClient client = new HttpClient())
+                using (HttpClient client = ObtenirClientHttp())
                 {
-                    var parametres = new Dictionary<string, string> { { "action", action }, { "data", donnees } };
-                    await client.PostAsync(WebAppUrl, new FormUrlEncodedContent(parametres));
+                    // Envoi en POST sur l'URL du script
+                    var parametres = new Dictionary<string, string>
+                    {
+                        { "action", action },
+                        { "data", donnees }
+                    };
+
+                    var content = new FormUrlEncodedContent(parametres);
+                    await client.PostAsync(WebAppUrl, content);
                 }
             }
             catch { }
@@ -26,7 +42,7 @@ namespace SharedLogic
         {
             try
             {
-                using (HttpClient client = new HttpClient())
+                using (HttpClient client = ObtenirClientHttp())
                 {
                     return await client.GetStringAsync(WebAppUrl + "?type=update");
                 }
@@ -38,7 +54,7 @@ namespace SharedLogic
         {
             try
             {
-                using (HttpClient client = new HttpClient())
+                using (HttpClient client = ObtenirClientHttp())
                 {
                     return await client.GetStringAsync(WebAppUrl + "?type=activations");
                 }
@@ -50,7 +66,7 @@ namespace SharedLogic
         {
             try
             {
-                using (HttpClient client = new HttpClient())
+                using (HttpClient client = ObtenirClientHttp())
                 {
                     string response = await client.GetStringAsync(WebAppUrl + "?type=admins");
                     if (string.IsNullOrWhiteSpace(response)) return new List<string>();
@@ -64,7 +80,7 @@ namespace SharedLogic
         {
             try
             {
-                using (HttpClient client = new HttpClient())
+                using (HttpClient client = ObtenirClientHttp())
                 {
                     string blacklist = await client.GetStringAsync(WebAppUrl);
                     return blacklist.Contains(cle);
@@ -77,7 +93,7 @@ namespace SharedLogic
         {
             try
             {
-                using (HttpClient client = new HttpClient())
+                using (HttpClient client = ObtenirClientHttp())
                 {
                     string liste = await client.GetStringAsync(WebAppUrl + "?type=trials");
                     return liste.Contains(hwid);
